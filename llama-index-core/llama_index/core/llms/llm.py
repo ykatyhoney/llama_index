@@ -326,9 +326,11 @@ class LLM(BaseLLM):
         """
         from llama_index.core.program.utils import get_program_for_llm
 
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(LLMStructuredPredictStartEvent())
+        dispatcher.event(
+            LLMStructuredPredictStartEvent(
+                output_cls=output_cls, template=prompt, template_args=prompt_args
+            )
+        )
         program = get_program_for_llm(
             output_cls,
             prompt,
@@ -337,7 +339,7 @@ class LLM(BaseLLM):
         )
 
         result = program(**prompt_args)
-        dispatch_event(LLMStructuredPredictEndEvent())
+        dispatcher.event(LLMStructuredPredictEndEvent(output=result))
         return result
 
     @dispatcher.span
@@ -377,9 +379,11 @@ class LLM(BaseLLM):
         """
         from llama_index.core.program.utils import get_program_for_llm
 
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(LLMStructuredPredictStartEvent())
+        dispatcher.event(
+            LLMStructuredPredictStartEvent(
+                output_cls=output_cls, template=prompt, template_args=prompt_args
+            )
+        )
 
         program = get_program_for_llm(
             output_cls,
@@ -389,7 +393,7 @@ class LLM(BaseLLM):
         )
 
         result = await program.acall(**prompt_args)
-        dispatch_event(LLMStructuredPredictEndEvent())
+        dispatcher.event(LLMStructuredPredictEndEvent(output=result))
         return result
 
     # -- Prompt Chaining --
@@ -420,9 +424,9 @@ class LLM(BaseLLM):
             print(output)
             ```
         """
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(LLMPredictStartEvent())
+        dispatcher.event(
+            LLMPredictStartEvent(template=prompt, template_args=prompt_args)
+        )
         self._log_template_data(prompt, **prompt_args)
 
         if self.metadata.is_chat_model:
@@ -433,8 +437,9 @@ class LLM(BaseLLM):
             formatted_prompt = self._get_prompt(prompt, **prompt_args)
             response = self.complete(formatted_prompt, formatted=True)
             output = response.text
-        dispatch_event(LLMPredictEndEvent())
-        return self._parse_output(output)
+        parsed_output = self._parse_output(output)
+        dispatcher.event(LLMPredictEndEvent(output=parsed_output))
+        return parsed_output
 
     @dispatcher.span
     def stream(
@@ -465,6 +470,9 @@ class LLM(BaseLLM):
         """
         self._log_template_data(prompt, **prompt_args)
 
+        dispatcher.event(
+            LLMPredictStartEvent(template=prompt, template_args=prompt_args)
+        )
         if self.metadata.is_chat_model:
             messages = self._get_messages(prompt, **prompt_args)
             chat_response = self.stream_chat(messages)
@@ -505,9 +513,9 @@ class LLM(BaseLLM):
             print(output)
             ```
         """
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(LLMPredictStartEvent())
+        dispatcher.event(
+            LLMPredictStartEvent(template=prompt, template_args=prompt_args)
+        )
         self._log_template_data(prompt, **prompt_args)
 
         if self.metadata.is_chat_model:
@@ -519,8 +527,9 @@ class LLM(BaseLLM):
             response = await self.acomplete(formatted_prompt, formatted=True)
             output = response.text
 
-        dispatch_event(LLMPredictEndEvent())
-        return self._parse_output(output)
+        parsed_output = self._parse_output(output)
+        dispatcher.event(LLMPredictEndEvent(output=parsed_output))
+        return parsed_output
 
     @dispatcher.span
     async def astream(
@@ -551,6 +560,9 @@ class LLM(BaseLLM):
         """
         self._log_template_data(prompt, **prompt_args)
 
+        dispatcher.event(
+            LLMPredictStartEvent(template=prompt, template_args=prompt_args)
+        )
         if self.metadata.is_chat_model:
             messages = self._get_messages(prompt, **prompt_args)
             chat_response = await self.astream_chat(messages)
@@ -584,6 +596,7 @@ class LLM(BaseLLM):
         """
         from llama_index.core.agent.react import ReActAgentWorker
         from llama_index.core.agent.types import Task
+        from llama_index.core.chat_engine.types import AgentChatResponse
         from llama_index.core.memory import ChatMemoryBuffer
 
         worker = ReActAgentWorker(
@@ -631,6 +644,7 @@ class LLM(BaseLLM):
         """Predict and call the tool."""
         from llama_index.core.agent.react import ReActAgentWorker
         from llama_index.core.agent.types import Task
+        from llama_index.core.chat_engine.types import AgentChatResponse
         from llama_index.core.memory import ChatMemoryBuffer
 
         worker = ReActAgentWorker(

@@ -3,7 +3,8 @@ from typing import Dict, Sequence, Tuple
 from llama_index.core.base.llms.types import ChatMessage, ChatResponse, MessageRole
 
 from anthropic.types import MessageParam, TextBlockParam
-from anthropic.types.beta.tools import ToolResultBlockParam, ToolUseBlockParam
+from anthropic.types.tool_result_block_param import ToolResultBlockParam
+from anthropic.types.tool_use_block_param import ToolUseBlockParam
 
 HUMAN_PREFIX = "\n\nHuman:"
 ASSISTANT_PREFIX = "\n\nAssistant:"
@@ -17,6 +18,7 @@ CLAUDE_MODELS: Dict[str, int] = {
     "claude-3-opus-20240229": 180000,
     "claude-3-sonnet-20240229": 180000,
     "claude-3-haiku-20240307": 180000,
+    "claude-3-5-sonnet-20240620": 180000,
 }
 
 
@@ -67,7 +69,7 @@ def messages_to_anthropic_messages(
     system_prompt = ""
     for message in messages:
         if message.role == MessageRole.SYSTEM:
-            system_prompt = message.content
+            system_prompt += message.content + "\n"
         elif message.role == MessageRole.FUNCTION or message.role == MessageRole.TOOL:
             content = ToolResultBlockParam(
                 tool_use_id=message.additional_kwargs["tool_call_id"],
@@ -105,7 +107,7 @@ def messages_to_anthropic_messages(
             )
             anthropic_messages.append(anth_message)
 
-    return __merge_common_role_msgs(anthropic_messages), system_prompt
+    return __merge_common_role_msgs(anthropic_messages), system_prompt.strip()
 
 
 # Function used in bedrock

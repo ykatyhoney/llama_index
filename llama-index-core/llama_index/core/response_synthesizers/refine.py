@@ -20,7 +20,7 @@ from llama_index.core.prompts.default_prompt_selectors import (
     DEFAULT_TEXT_QA_PROMPT_SEL,
 )
 from llama_index.core.prompts.mixin import PromptDictType
-from llama_index.core.response.utils import get_response_text
+from llama_index.core.response.utils import get_response_text, aget_response_text
 from llama_index.core.response_synthesizers.base import BaseSynthesizer
 from llama_index.core.service_context import ServiceContext
 from llama_index.core.service_context_elements.llm_predictor import (
@@ -172,9 +172,9 @@ class Refine(BaseSynthesizer):
         **response_kwargs: Any,
     ) -> RESPONSE_TEXT_TYPE:
         """Give response over chunks."""
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(GetResponseStartEvent())
+        dispatcher.event(
+            GetResponseStartEvent(query_str=query_str, text_chunks=text_chunks)
+        )
         response: Optional[RESPONSE_TEXT_TYPE] = None
         for text_chunk in text_chunks:
             if prev_response is None:
@@ -196,7 +196,7 @@ class Refine(BaseSynthesizer):
                 response = response or "Empty Response"
         else:
             response = cast(Generator, response)
-        dispatch_event(GetResponseEndEvent())
+        dispatcher.event(GetResponseEndEvent())
         return response
 
     def _default_program_factory(self, prompt: PromptTemplate) -> BasePydanticProgram:
@@ -352,9 +352,9 @@ class Refine(BaseSynthesizer):
         prev_response: Optional[RESPONSE_TEXT_TYPE] = None,
         **response_kwargs: Any,
     ) -> RESPONSE_TEXT_TYPE:
-        dispatch_event = dispatcher.get_dispatch_event()
-
-        dispatch_event(GetResponseStartEvent())
+        dispatcher.event(
+            GetResponseStartEvent(query_str=query_str, text_chunks=text_chunks)
+        )
         response: Optional[RESPONSE_TEXT_TYPE] = None
         for text_chunk in text_chunks:
             if prev_response is None:
@@ -377,7 +377,7 @@ class Refine(BaseSynthesizer):
                 response = response or "Empty Response"
         else:
             response = cast(AsyncGenerator, response)
-        dispatch_event(GetResponseEndEvent())
+        dispatcher.event(GetResponseEndEvent())
         return response
 
     async def _arefine_response_single(
@@ -389,8 +389,8 @@ class Refine(BaseSynthesizer):
     ) -> Optional[RESPONSE_TEXT_TYPE]:
         """Refine response."""
         # TODO: consolidate with logic in response/schema.py
-        if isinstance(response, Generator):
-            response = get_response_text(response)
+        if isinstance(response, AsyncGenerator):
+            response = await aget_response_text(response)
 
         fmt_text_chunk = truncate_text(text_chunk, 50)
         logger.debug(f"> Refine context: {fmt_text_chunk}")

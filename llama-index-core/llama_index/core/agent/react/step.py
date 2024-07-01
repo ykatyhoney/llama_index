@@ -3,8 +3,6 @@
 import asyncio
 import uuid
 from functools import partial
-from itertools import chain
-from threading import Thread
 from typing import (
     Any,
     AsyncGenerator,
@@ -54,7 +52,8 @@ from llama_index.core.prompts.mixin import PromptDictType
 from llama_index.core.settings import Settings
 from llama_index.core.tools import BaseTool, ToolOutput, adapt_to_async_tool
 from llama_index.core.tools.types import AsyncBaseTool
-from llama_index.core.utils import print_text, unit_generator
+from llama_index.core.types import Thread
+from llama_index.core.utils import print_text
 
 
 def add_user_step_to_reasoning(
@@ -304,9 +303,11 @@ class ReActAgentWorker(BaseAgentWorker):
 
         observation_step = ObservationReasoningStep(
             observation=str(tool_output),
-            return_direct=tool.metadata.return_direct and not tool_output.is_error
-            if tool
-            else False,
+            return_direct=(
+                tool.metadata.return_direct and not tool_output.is_error
+                if tool
+                else False
+            ),
         )
         current_reasoning.append(observation_step)
         if self._verbose:
@@ -368,9 +369,11 @@ class ReActAgentWorker(BaseAgentWorker):
 
         observation_step = ObservationReasoningStep(
             observation=str(tool_output),
-            return_direct=tool.metadata.return_direct and not tool_output.is_error
-            if tool
-            else False,
+            return_direct=(
+                tool.metadata.return_direct and not tool_output.is_error
+                if tool
+                else False
+            ),
         )
         current_reasoning.append(observation_step)
         if self._verbose:
@@ -483,17 +486,12 @@ class ReActAgentWorker(BaseAgentWorker):
         Return:
             Generator[ChatResponse, None, None]: the updated chat_stream
         """
-        updated_stream = chain.from_iterable(  # need to add back partial response chunk
-            [
-                unit_generator(chunk),
-                chat_stream,
-            ]
-        )
-        # use cast to avoid mypy issue with chain and Generator
-        updated_stream_c: Generator[ChatResponse, None, None] = cast(
-            Generator[ChatResponse, None, None], updated_stream
-        )
-        return updated_stream_c
+
+        def gen() -> Generator[ChatResponse, None, None]:
+            yield chunk
+            yield from chat_stream
+
+        return gen()
 
     async def _async_add_back_chunk_to_stream(
         self, chunk: ChatResponse, chat_stream: AsyncGenerator[ChatResponse, None]
@@ -531,7 +529,8 @@ class ReActAgentWorker(BaseAgentWorker):
         tools = self.get_tools(task.input)
         input_chat = self._react_chat_formatter.format(
             tools,
-            chat_history=task.memory.get() + task.extra_state["new_memory"].get_all(),
+            chat_history=task.memory.get(input=task.input)
+            + task.extra_state["new_memory"].get_all(),
             current_reasoning=task.extra_state["current_reasoning"],
         )
 
@@ -570,7 +569,8 @@ class ReActAgentWorker(BaseAgentWorker):
 
         input_chat = self._react_chat_formatter.format(
             tools,
-            chat_history=task.memory.get() + task.extra_state["new_memory"].get_all(),
+            chat_history=task.memory.get(input=task.input)
+            + task.extra_state["new_memory"].get_all(),
             current_reasoning=task.extra_state["current_reasoning"],
         )
         # send prompt
@@ -608,7 +608,8 @@ class ReActAgentWorker(BaseAgentWorker):
 
         input_chat = self._react_chat_formatter.format(
             tools,
-            chat_history=task.memory.get() + task.extra_state["new_memory"].get_all(),
+            chat_history=task.memory.get(input=task.input)
+            + task.extra_state["new_memory"].get_all(),
             current_reasoning=task.extra_state["current_reasoning"],
         )
 
@@ -679,7 +680,8 @@ class ReActAgentWorker(BaseAgentWorker):
 
         input_chat = self._react_chat_formatter.format(
             tools,
-            chat_history=task.memory.get() + task.extra_state["new_memory"].get_all(),
+            chat_history=task.memory.get(input=task.input)
+            + task.extra_state["new_memory"].get_all(),
             current_reasoning=task.extra_state["current_reasoning"],
         )
 
@@ -698,7 +700,7 @@ class ReActAgentWorker(BaseAgentWorker):
 
         if not is_done:
             # given react prompt outputs, call tools or return response
-            reasoning_steps, is_done = self._process_actions(
+            reasoning_steps, is_done = await self._aprocess_actions(
                 task, tools=tools, output=full_response, is_streaming=True
             )
             task.extra_state["current_reasoning"].extend(reasoning_steps)
@@ -734,7 +736,7 @@ class ReActAgentWorker(BaseAgentWorker):
             # wait until response writing is done
             agent_response._ensure_async_setup()
 
-            await agent_response._is_function_false_event.wait()
+            await agent_response.is_function_false_event.wait()
 
         return self._get_task_step_response(agent_response, step, is_done)
 
